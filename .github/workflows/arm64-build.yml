@@ -1,0 +1,63 @@
+name: ARM64 Binary
+
+on:
+  push:
+    branches: ["4.1x-dev"]
+  pull_request:
+    branches: ["4.1x-dev"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Publish Linux ARM64 binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: false
+
+      - name: Configure Git LFS
+        run: |
+          git lfs install
+          git config -f .lfsconfig lfs.url https://lfs.sp-tushonka.com/sp-tushonka/server-csharp
+          git config -f .lfsconfig lfs.locksverify false
+          git lfs pull
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0
+
+      - name: Restore dependencies
+        run: dotnet restore SPTushonka.Server/SPTushonka.Server.csproj --runtime linux-arm64
+
+      - name: Publish ARM64 binary
+        run: |
+          dotnet publish SPTushonka.Server/SPTushonka.Server.csproj \
+            --configuration Release \
+            --runtime linux-arm64 \
+            --self-contained true \
+            --no-restore \
+            --output ./publish/linux-arm64 \
+            -p:SptCommit="${GITHUB_SHA::7}" \
+            -p:SptBuildTime="$(date +%s)" \
+            -p:SptBuildType=RELEASE
+
+      - name: Package artifact
+        run: tar -C ./publish/linux-arm64 -czf ./spt-server-linux-arm64.tar.gz .
+
+      - name: Upload ARM64 artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: spt-server-linux-arm64
+          path: spt-server-linux-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
